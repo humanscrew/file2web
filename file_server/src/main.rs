@@ -1,7 +1,4 @@
 pub mod service {
-    pub mod file_server;
-}
-pub mod route {
     pub mod router;
 }
 
@@ -11,7 +8,13 @@ pub mod api {
     pub mod greet;
 }
 
-pub fn main() {
-    service::file_server::server().unwrap();
-    ()
+use crate::service::router;
+use poem::{listener::TcpListener, Server};
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    let app = router::generate();
+    Server::new(TcpListener::bind("0.0.0.0:3000"))
+        .run(app)
+        .await
 }
