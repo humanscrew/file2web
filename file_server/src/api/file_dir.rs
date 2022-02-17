@@ -1,3 +1,5 @@
+use async_recursion::async_recursion;
+use futures::future;
 use poem::{
     error::StaticFileError,
     handler,
@@ -21,7 +23,7 @@ pub struct Dir<T> {
     pub children: Option<Vec<Dir<T>>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Metadata {
     // pub file_type: FileType,
     pub is_dir: bool,
@@ -52,78 +54,79 @@ impl Metadata {
 
     fn error(message: String) -> Self {
         Self {
-            is_dir: false,
-            is_file: false,
-            is_symlink: false,
-            size: 0,
-            status: false,
             message: Some(message),
+            ..Default::default()
         }
     }
 }
 
 impl Dir<String> {
-    fn new(dir_path: impl Into<PathBuf>, depth: usize) -> Result<Self, io::Error> {
-        let dir_path = dir_path.into();
-        Self::map_dir(dir_path, depth)
+    async fn new(dir_path: impl Into<PathBuf>, depth: usize) -> Result<Self, io::Error> {
+        let dir_path_buf = dir_path.into();
+        Self::map_dir(dir_path_buf, depth).await
     }
 
-    fn map_dir(path: PathBuf, depth: usize) -> Result<Self, io::Error> {
-        let current_path = path.to_str().map(str::to_string);
-
+    #[async_recursion]
+    async fn map_dir(path_buf: PathBuf, depth: usize) -> Result<Self, io::Error> {
         let mut dir = Self {
-            path: current_path.clone(),
+            path: None,
             metadata: None,
             children: None,
         };
 
-        if let Some(file_path) = &current_path {
-            match &fs::metadata(file_path) {
-                Ok(metadata) => dir.metadata = Some(Metadata::new(metadata)),
-                Err(_) => dir.metadata = Some(Metadata::error("File Failed".to_string())),
-            }
+        let current_path = path_buf.as_path();
+        if let Some(path) = current_path.to_str() {
+            dir.path = Some(path.into());
+        }
+        match &fs::metadata(&current_path) {
+            Ok(metadata) => dir.metadata = Some(Metadata::new(metadata)),
+            Err(_) => dir.metadata = Some(Metadata::error("File Metadata Error".into())),
         };
 
         if depth <= 0 {
             return Ok(dir);
         }
 
-        if path.is_dir() {
-            dir.children = Some(vec![]);
-            let read_dir = path.read_dir()?;
+        let mut async_queue = vec![];
+        if path_buf.is_dir() {
+            let read_dir = path_buf.read_dir()?;
             for entry in read_dir {
-                let entry = entry?;
-                let children_path = entry.path();
-                let child = Self::map_dir(children_path, depth - 1)?;
-                dir.children.as_mut().unwrap().push(child);
+                let children_path_buf = entry?.path();
+                let child = Self::map_dir(children_path_buf, depth - 1);
+                async_queue.push(child);
             }
-        }
+            let children = future::try_join_all(async_queue).await?;
 
+            dir.children = Some(children);
+        }
         Ok(dir)
     }
 
-    fn disk_dir(depth: usize) -> Result<Self, io::Error> {
+    async fn disk_dir(depth: usize) -> Result<Self, io::Error> {
         let mut dir = Self {
             path: Some('/'.into()),
             metadata: None,
-            children: Some(vec![]),
+            children: None,
         };
 
         let mut system = System::new();
         system.refresh_disks_list();
-        let disks: Vec<_> = system
+        let disk_mount_points: Vec<_> = system
             .disks()
             .iter()
             .map(|disk| disk.mount_point())
             .collect();
 
-        for disk in disks {
-            let path = disk.to_str();
-            if let Some(path) = path {
-                let child = Self::new(path, depth)?;
-                dir.children.as_mut().unwrap().push(child);
+        let mut async_queue = vec![];
+        for disk_mount_point in disk_mount_points {
+            let disk_path = disk_mount_point.to_str();
+            if let Some(path) = disk_path {
+                let child = Self::new(path, depth);
+                async_queue.push(child);
             }
         }
+        let children = future::try_join_all(async_queue).await?;
+        dir.children = Some(children);
         Ok(dir)
     }
 }
@@ -143,11 +146,10 @@ pub async fn file_dir(
     let file_dir: Dir<String>;
     if path.is_none() {
         let depth = depth.unwrap_or(0);
-        file_dir = Dir::disk_dir(depth)?
+        file_dir = Dir::disk_dir(depth).await?
     } else {
         let depth = depth.unwrap_or(1);
-        file_dir = Dir::new(path.unwrap(), depth)?
+        file_dir = Dir::new(path.unwrap(), depth).await?
     }
-
     Ok(Json(file_dir))
 }
