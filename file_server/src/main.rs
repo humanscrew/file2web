@@ -1,12 +1,5 @@
-pub mod service {
-    pub mod router;
-}
-
-pub mod api {
-    pub mod file;
-    pub mod file_dir;
-    pub mod greet;
-}
+mod api;
+mod service;
 
 use crate::service::router;
 use poem::{listener::TcpListener, Server};
