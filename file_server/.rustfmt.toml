@@ -1,0 +1,30 @@
+# @Author: westhide.yzw
+# @Date: 2022-02-22 12:42:06
+# @Last Modified by:   westhide.yzw
+# @Last Modified time: 2022-02-22 12:42:06
+
+# Misc
+edition = "2021"
+
+# Fundamental stuff
+newline_style = "unix"
+
+# comments
+normalize_comments = true
+wrap_comments = true
+format_code_in_doc_comments = true
+
+# Imports
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# Ordering
+reorder_imports = true
+reorder_impl_items = true
+
+# Options that can change the source code beyond whitespace/blocks
+merge_derives = true
+
+# Control options
+# report_fixme="Unnumbered"
+# report_todo="Unnumbered"

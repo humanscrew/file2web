@@ -1,18 +1,11 @@
-use poem::{
-    handler,
-    web::{Path, Query},
-};
-use serde::Deserialize;
+// @Author: westhide.yzw
+// @Date: 2022-02-22 12:44:39
+// @Last Modified by:   westhide.yzw
+// @Last Modified time: 2022-02-22 12:44:39
 
-#[derive(Debug, Deserialize)]
-pub struct UserParams {
-    username: String,
-}
+use poem::{handler, web::Path};
 
 #[handler]
-pub async fn greet(
-    Path(path): Path<String>,
-    Query(UserParams { username }): Query<UserParams>,
-) -> String {
-    format!("Hello: {},{}", path, username)
+pub async fn greet(Path(path): Path<String>) -> String {
+    format!("Hello: {path}!")
 }

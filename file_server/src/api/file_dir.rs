@@ -1,4 +1,12 @@
+// @Author: westhide.yzw
+// @Date: 2022-02-22 12:44:24
+// @Last Modified by:   westhide.yzw
+// @Last Modified time: 2022-02-22 12:44:24
+
+use std::path::PathBuf;
+
 use async_recursion::async_recursion;
+use chrono::{offset::Local, DateTime};
 use futures::future;
 use poem::{
     error::StaticFileError,
@@ -7,47 +15,72 @@ use poem::{
     Result,
 };
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use sysinfo::{DiskExt, System, SystemExt};
 use tokio::{fs, io};
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Dir<T> {
     pub path: Option<T>,
-    pub metadata: Option<Metadata>,
+    pub metadata: Metadata,
     pub children: Option<Vec<Dir<T>>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Metadata {
-    // pub file_type: FileType,
-    pub is_dir: bool,
-    pub is_file: bool,
-    pub is_symlink: bool,
-    pub size: Option<u64>,
+    pub file_type: Option<String>,
+    pub size: u64,
     pub status: bool,
     pub message: Option<String>,
-    // pub permissions: Permissions,
-    // pub modified: Result<SystemTime>,
-    // pub accessed: Result<SystemTime>,
-    // pub created: Result<SystemTime>,
+    created: Option<DateTime<Local>>,
+    modified: Option<DateTime<Local>>,
+    // accessed: Option<DateTime<Local>>,
 }
 
 impl Metadata {
     fn new(metadata: &std::fs::Metadata) -> Self {
+        let mut file_type = None;
+        if metadata.is_file() {
+            file_type = Some("file".into())
+        } else if metadata.is_dir() {
+            file_type = Some("dir".into())
+        } else if metadata.is_symlink() {
+            file_type = Some("symlink".into())
+        }
+
+        let created = match metadata.created() {
+            Ok(created) => Some(created.into()),
+            Err(_) => None,
+        };
+        let modified = match metadata.modified() {
+            Ok(modified) => Some(modified.into()),
+            Err(_) => None,
+        };
+        // let accessed = match metadata.accessed() {
+        //     Ok(accessed) => Some(accessed.into()),
+        //     Err(_) => None,
+        // };
+
         Self {
-            is_file: metadata.is_file(),
-            is_symlink: metadata.is_symlink(),
+            file_type,
+            size: metadata.len(),
             status: true,
+            created,
+            modified,
+            // accessed,
             ..Self::default()
         }
     }
 
     fn error(message: String) -> Self {
         Self {
+            status: false,
             message: Some(message),
             ..Self::default()
         }
+    }
+
+    fn is_dir(&self) -> bool {
+        self.file_type == Some("dir".into())
     }
 }
 
@@ -63,24 +96,17 @@ impl Dir<String> {
         dir.path = path_buf.to_str().map(str::to_string);
 
         let metadata = fs::metadata(&path_buf).await;
-        let is_dir;
         match &metadata {
             Ok(metadata) => {
-                dir.metadata = Some(Metadata::new(metadata));
-                is_dir = metadata.is_dir();
-                if let Some(dir_metadata) = &mut dir.metadata {
-                    dir_metadata.is_dir = is_dir;
-                    let size = if is_dir { None } else { Some(metadata.len()) };
-                    dir_metadata.size = size;
-                }
+                dir.metadata = Metadata::new(metadata);
             }
             Err(err) => {
-                dir.metadata = Some(Metadata::error(format!("{}", err)));
+                dir.metadata = Metadata::error(format!("{err}"));
                 return Ok(dir);
             }
         };
 
-        if is_dir && depth != 0 {
+        if dir.metadata.is_dir() && depth != 0 {
             let mut async_queue = vec![];
             match path_buf.read_dir() {
                 Ok(read_dir) => {
@@ -94,7 +120,7 @@ impl Dir<String> {
 
                     dir.children = Some(children);
                 }
-                Err(err) => dir.metadata = Some(Metadata::error(format!("{}", err))),
+                Err(err) => dir.metadata = Metadata::error(format!("{err}")),
             }
         };
 
@@ -144,9 +170,6 @@ pub async fn file_dir(
 ) -> Result<Json<Dir<String>>, StaticFileError> {
     let FileDirParams { path, depth } = params;
 
-    use std::time::Instant;
-    let now = Instant::now();
-
     let file_dir: Dir<String>;
     let depth = depth.unwrap_or(1);
     if path.is_none() {
@@ -154,8 +177,6 @@ pub async fn file_dir(
     } else {
         file_dir = Dir::new(path.unwrap(), depth).await?
     }
-
-    println!("执行时间: {}ms", now.elapsed().as_millis());
 
     Ok(Json(file_dir))
 }

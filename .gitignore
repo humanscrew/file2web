@@ -1,8 +1,15 @@
+/*
+* @Author: westhide.yzw
+* @Date: 2022-02-22 12:35:01
+* @Last Modified by: westhide.yzw
+* @Last Modified time: 2022-02-22 12:35:01
+*/
+
 **/target
 **/*.rs.bk
-**/Cargo.lock
 **/bin/
 **/pkg/
 **/wasm-pack.log
+**/.vscode/
 
 workspace.code-workspace

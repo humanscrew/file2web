@@ -1,22 +1,28 @@
-use poem::{endpoint::StaticFilesEndpoint, handler, Endpoint, Request, Response, Result};
-use serde::Deserialize;
+// @Author: westhide.yzw
+// @Date: 2022-02-22 12:44:32
+// @Last Modified by:   westhide.yzw
+// @Last Modified time: 2022-02-22 12:44:32
 
-#[handler]
-pub async fn index() {}
+use poem::{
+    handler,
+    web::{Query, StaticFileRequest},
+    FromRequest, IntoResponse, Request, Response, Result,
+};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct FileParams {
-    drive_path: String,
+    path: String,
+    prefer_utf8: Option<bool>,
 }
 
-pub async fn file<E: Endpoint>(_: E, req: Request) -> Result<Response> {
-    let params = req.params::<FileParams>();
-    let drive_path = match params {
-        Ok(FileParams { drive_path }) => drive_path,
-        _ => format!("/"),
-    };
-    StaticFilesEndpoint::new(drive_path)
-        .show_files_listing()
-        .call(req)
-        .await
+#[handler]
+pub async fn file(req: &Request, Query(params): Query<FileParams>) -> Result<Response> {
+    let FileParams { path, prefer_utf8 } = params;
+
+    let response = StaticFileRequest::from_request_without_body(&req)
+        .await?
+        .create_response(&path, prefer_utf8.unwrap_or(true))?
+        .into_response();
+    Ok(response)
 }
