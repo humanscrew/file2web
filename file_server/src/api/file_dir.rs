@@ -92,8 +92,10 @@ impl Dir<String> {
 
     #[async_recursion]
     async fn make_dir(path_buf: PathBuf, depth: isize) -> Result<Self, io::Error> {
-        let mut dir = Self::default();
-        dir.path = path_buf.to_str().map(str::to_string);
+        let mut dir = Dir::<std::string::String> {
+            path: path_buf.to_str().map(str::to_string),
+            ..Self::default()
+        };
 
         let metadata = fs::metadata(&path_buf).await;
         match &metadata {

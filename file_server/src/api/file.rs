@@ -20,7 +20,7 @@ pub struct FileParams {
 pub async fn file(req: &Request, Query(params): Query<FileParams>) -> Result<Response> {
     let FileParams { path, prefer_utf8 } = params;
 
-    let response = StaticFileRequest::from_request_without_body(&req)
+    let response = StaticFileRequest::from_request_without_body(req)
         .await?
         .create_response(&path, prefer_utf8.unwrap_or(true))?
         .into_response();
